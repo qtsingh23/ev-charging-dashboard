@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Greenfield Borough EV Charging Network Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      background: #f4f6f9;
+      color: #1a2332;
+      line-height: 1.5;
+    }
+    .header {
+      background: linear-gradient(135deg, #0f6e56 0%, #1d9e75 100%);
+      color: white;
+      padding: 32px 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .header h1 { font-size: 28px; margin-bottom: 4px; font-weight: 600; }
+    .header p { font-size: 14px; opacity: 0.92; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      border-left: 4px solid #1d9e75;
+    }
+    .kpi-label { font-size: 12px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .kpi-value { font-size: 28px; font-weight: 600; color: #0f6e56; }
+    .kpi-sub { font-size: 12px; color: #6b7280; margin-top: 4px; }
+    .chart-card {
+      background: white;
+      padding: 24px;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      margin-bottom: 24px;
+    }
+    .chart-card h2 { font-size: 18px; margin-bottom: 4px; color: #0f6e56; }
+    .chart-card .subtitle { font-size: 13px; color: #6b7280; margin-bottom: 16px; }
+    .chart-container { position: relative; height: 380px; }
+    .table-card {
+      background: white;
+      padding: 24px;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      margin-bottom: 24px;
+      overflow-x: auto;
+    }
+    .table-card h2 { font-size: 18px; margin-bottom: 4px; color: #0f6e56; }
+    .table-card .subtitle { font-size: 13px; color: #6b7280; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th {
+      background: #f9fafb;
+      text-align: left;
+      padding: 10px 12px;
+      font-weight: 600;
+      color: #374151;
+      border-bottom: 2px solid #e5e7eb;
+      cursor: pointer;
+      user-select: none;
+    }
+    th:hover { background: #f3f4f6; }
+    td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; }
+    tr:hover td { background: #f9fafb; }
+    .severity-Critical { color: #991b1b; font-weight: 600; }
+    .severity-High { color: #c2410c; font-weight: 600; }
+    .severity-Medium { color: #b45309; }
+    .severity-Low { color: #065f46; }
+    .footer {
+      text-align: center;
+      padding: 24px;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+    .insight {
+      background: #f0fdf4;
+      border-left: 3px solid #1d9e75;
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #064e3b;
+      margin-top: 16px;
+    }
+    .insight strong { color: #0f6e56; }
+    .data-source {
+      font-size: 11px;
+      color: #9ca3af;
+      font-style: italic;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // data pulled from query output - pasted in manually below
+
+    // Query 1: sessions per station split by time band
+    // left zeros in for stations with no sessions so the chart shows all 12
+    const stationTimeBandData = [
+      { station: "City Centre Car Park",      Morning: 15, Afternoon: 10, Evening: 3  },
+      { station: "Riverside Park & Ride",     Morning: 10, Afternoon: 10, Evening: 0  },
+      { station: "Greenfield Hospital",       Morning: 0,  Afternoon: 0,  Evening: 0  },
+      { station: "North Retail Park",         Morning: 15, Afternoon: 3,  Evening: 0  },
+      { station: "Greenfield Leisure Centre", Morning: 0,  Afternoon: 11, Evening: 1  },
+      { station: "Council Offices",           Morning: 0,  Afternoon: 0,  Evening: 0  },
+      { station: "West End Library",          Morning: 0,  Afternoon: 0,  Evening: 0  },
+      { station: "South Station Car Park",    Morning: 0,  Afternoon: 0,  Evening: 17 },
+      { station: "University Campus",         Morning: 1,  Afternoon: 14, Evening: 0  },
+      { station: "Eastfield Industrial Park", Morning: 0,  Afternoon: 0,  Evening: 0  },
+      { station: "Greenfield Cinema",         Morning: 0,  Afternoon: 11, Evening: 0  },
+      { station: "Northern Outskirts P&R",    Morning: 0,  Afternoon: 0,  Evening: 0  },
+    ];
+
+    // Query 2: monthly revenue by tariff (£)
+    const revenueByMonth = {
+      labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+      datasets: [
+        { label: "Standard Slow",  data: [24.64,  0,      0,      0,      0,      0     ] },
+        { label: "Standard Fast",  data: [189.47, 198.21, 234.09, 206.31, 194.58, 182.16] },
+        { label: "Rapid Premium",  data: [197.91, 232.71, 207.57, 262.35, 225.33, 207.84] },
+      ],
+    };
+
+    // Query 3: maintenance response by charger type & severity
+    const maintenanceData = [
+      { type: "Rapid", severity: "Critical", count: 6, avgDays: 7.0,  maxDays: 10,   unresolved: 0 },
+      { type: "Fast",  severity: "High",     count: 1, avgDays: null, maxDays: null, unresolved: 1 },
+      { type: "Rapid", severity: "High",     count: 6, avgDays: 5.0,  maxDays: 7,    unresolved: 0 },
+      { type: "Rapid", severity: "Medium",   count: 4, avgDays: 1.0,  maxDays: 1,    unresolved: 1 },
+      { type: "Slow",  severity: "Medium",   count: 1, avgDays: 1.0,  maxDays: 1,    unresolved: 0 },
+      { type: "Fast",  severity: "Low",      count: 1, avgDays: 1.0,  maxDays: 1,    unresolved: 0 },
+      { type: "Rapid", severity: "Low",      count: 3, avgDays: 1.0,  maxDays: 1,    unresolved: 0 },
+      { type: "Slow",  severity: "Low",      count: 3, avgDays: 1.0,  maxDays: 1,    unresolved: 0 },
+    ];
+
+    // summary KPIs
+    const kpis = {
+      totalSessions: 121,
+      totalRevenue: 2563.17,
+      totalEnergy: 3908.00,
+      totalChargers: 58,
+      activeChargers: 54,
+    };
+
+    // chart components
+
+    function GroupedBarChart({ data }) {
+      const canvasRef = useRef(null);
+      const chartRef = useRef(null);
+
+      useEffect(() => {
+        if (chartRef.current) chartRef.current.destroy();
+        const ctx = canvasRef.current.getContext("2d");
+        chartRef.current = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: data.map(d => d.station),
+            datasets: [
+              { label: "Morning (06–11)",   data: data.map(d => d.Morning),   backgroundColor: "#85B7EB" },
+              { label: "Afternoon (12–17)", data: data.map(d => d.Afternoon), backgroundColor: "#1d9e75" },
+              { label: "Evening (18–23)",   data: data.map(d => d.Evening),   backgroundColor: "#EF9F27" },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: "top", labels: { font: { size: 12 }, boxWidth: 14 } },
+              tooltip: { backgroundColor: "#1a2332", padding: 10 },
+            },
+            scales: {
+              x: { ticks: { font: { size: 10 }, maxRotation: 45, minRotation: 45 }, grid: { display: false } },
+              y: { beginAtZero: true, title: { display: true, text: "Number of sessions", font: { size: 12 } }, grid: { color: "#f3f4f6" } },
+            },
+          },
+        });
+        return () => chartRef.current && chartRef.current.destroy();
+      }, [data]);
+
+      return <canvas ref={canvasRef} />;
+    }
+
+    function RevenueLineChart({ data }) {
+      const canvasRef = useRef(null);
+      const chartRef = useRef(null);
+
+      useEffect(() => {
+        if (chartRef.current) chartRef.current.destroy();
+        const colors = ["#85B7EB", "#1d9e75", "#EF9F27"];
+        const ctx = canvasRef.current.getContext("2d");
+        chartRef.current = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: data.labels,
+            datasets: data.datasets.map((ds, i) => ({
+              ...ds,
+              borderColor: colors[i],
+              backgroundColor: colors[i] + "20",
+              tension: 0.3,
+              borderWidth: 2.5,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              fill: false,
+            })),
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: "top", labels: { font: { size: 12 }, boxWidth: 14 } },
+              tooltip: {
+                backgroundColor: "#1a2332",
+                padding: 10,
+                callbacks: { label: (ctx) => ctx.dataset.label + ": £" + ctx.parsed.y.toFixed(2) },
+              },
+            },
+            scales: {
+              x: { grid: { display: false }, title: { display: true, text: "Month (2025)", font: { size: 12 } } },
+              y: { beginAtZero: true, title: { display: true, text: "Revenue (£)", font: { size: 12 } }, grid: { color: "#f3f4f6" }, ticks: { callback: (v) => "£" + v } },
+            },
+          },
+        });
+        return () => chartRef.current && chartRef.current.destroy();
+      }, [data]);
+
+      return <canvas ref={canvasRef} />;
+    }
+
+    // main dashboard
+
+    function Dashboard() {
+      const [sortBy, setSortBy] = useState("count");
+      const [sortDir, setSortDir] = useState("desc");
+
+      const sortedMaintenance = [...maintenanceData].sort((a, b) => {
+        const dir = sortDir === "asc" ? 1 : -1;
+        const av = a[sortBy], bv = b[sortBy];
+        if (av === null) return 1;
+        if (bv === null) return -1;
+        if (typeof av === "string") return av.localeCompare(bv) * dir;
+        return (av - bv) * dir;
+      });
+
+      const handleSort = (key) => {
+        if (sortBy === key) setSortDir(sortDir === "asc" ? "desc" : "asc");
+        else { setSortBy(key); setSortDir("desc"); }
+      };
+
+      const arrow = (key) => sortBy === key ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+      const availability = ((kpis.activeChargers / kpis.totalChargers) * 100).toFixed(0);
+
+      return (
+        <div>
+          <div className="header">
+            <h1>Greenfield Borough EV Charging Network</h1>
+            <p>Dashboard covering January to June 2025</p>
+          </div>
+
+          <div className="container">
+
+            <div className="kpi-grid">
+              <div className="kpi-card">
+                <div className="kpi-label">Total sessions</div>
+                <div className="kpi-value">{kpis.totalSessions.toLocaleString()}</div>
+                <div className="kpi-sub">across 12 stations</div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-label">Total revenue</div>
+                <div className="kpi-value">£{kpis.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                <div className="kpi-sub">six-month period</div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-label">Energy delivered</div>
+                <div className="kpi-value">{kpis.totalEnergy.toLocaleString()} kWh</div>
+                <div className="kpi-sub">≈ 19,540 EV miles</div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-label">Active chargers</div>
+                <div className="kpi-value">{kpis.activeChargers}<span style={{fontSize: 16, color: "#9ca3af"}}> / {kpis.totalChargers}</span></div>
+                <div className="kpi-sub">{availability}% network availability</div>
+              </div>
+            </div>
+
+            <div className="chart-card">
+              <h2>Sessions per station by time of day</h2>
+              <p className="subtitle">This chart breaks down how many charging sessions happened at each station, split by morning, afternoon and evening.</p>
+              <div className="chart-container">
+                <GroupedBarChart data={stationTimeBandData} />
+              </div>
+              <div className="data-source">Source: Query 1 - joins charging_sessions, chargers and stations.</div>
+              <div className="insight">
+                <strong>What this tells us:</strong> The five stations with zero sessions were the first thing I noticed - that's nearly half the network not being used at all over six months. Could be a visibility issue or just poor siting. City Centre and North Retail Park being morning-heavy makes sense given where they are. South Station being almost entirely evening use is interesting - probably people collecting cars after commuting. The Uni and Cinema skewing afternoon also seems about right.
+              </div>
+            </div>
+
+            <div className="chart-card">
+              <h2>Monthly revenue by tariff type</h2>
+              <p className="subtitle">This tracks how much revenue each tariff type brought in per month over the sample period.</p>
+              <div className="chart-container">
+                <RevenueLineChart data={revenueByMonth} />
+              </div>
+              <div className="data-source">Source: Query 2 - joins charging_sessions, chargers and tariffs, grouped by month.</div>
+              <div className="insight">
+                <strong>What this tells us:</strong> Rapid Premium slightly edges out Standard Fast over the period despite fewer sessions, which suggests the per-session rate is doing the work there. The Slow tariff dropping off after January is a bit odd - not sure if that's a data issue or if those chargers went offline. The Council Resident tariff showing nothing at all stood out to me; it might just not be promoted anywhere visible.
+              </div>
+            </div>
+
+            <div className="table-card">
+              <h2>Maintenance response times</h2>
+              <p className="subtitle">This table shows how long it takes to fix different types of faults. You can click column headers to sort.</p>
+              <table>
+                <thead>
+                  <tr>
+                    <th onClick={() => handleSort("type")}>Charger type{arrow("type")}</th>
+                    <th onClick={() => handleSort("severity")}>Severity{arrow("severity")}</th>
+                    <th onClick={() => handleSort("count")}>Fault count{arrow("count")}</th>
+                    <th onClick={() => handleSort("avgDays")}>Avg days to resolve{arrow("avgDays")}</th>
+                    <th onClick={() => handleSort("maxDays")}>Max days{arrow("maxDays")}</th>
+                    <th onClick={() => handleSort("unresolved")}>Unresolved{arrow("unresolved")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedMaintenance.map((row, i) => (
+                    <tr key={i}>
+                      <td>{row.type}</td>
+                      <td className={"severity-" + row.severity}>{row.severity}</td>
+                      <td>{row.count}</td>
+                      <td>{row.avgDays === null ? "—" : row.avgDays.toFixed(1)}</td>
+                      <td>{row.maxDays === null ? "—" : row.maxDays}</td>
+                      <td>{row.unresolved > 0 ? <strong style={{color: "#991b1b"}}>{row.unresolved}</strong> : row.unresolved}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="data-source">Source: Query 3 - joins maintenance_logs and chargers.</div>
+              <div className="insight">
+                <strong>What this tells us:</strong> Rapid chargers account for the majority of faults and also take the longest to fix - 7 days average for critical issues, with one taking 10. Given they're the highest earners per session that seems like the obvious place to push for better SLA terms in the maintenance contract. There's also an unresolved high-severity fault on a fast charger that doesn't appear to have a resolution date, which is worth chasing up separately.
+              </div>
+            </div>
+
+            <div className="footer">
+              <p>EV Charging Network Dashboard - Greenfield Borough Council</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<Dashboard />);
+  </script>
+</body>
+</html>
